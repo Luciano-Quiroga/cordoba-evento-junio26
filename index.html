@@ -277,7 +277,7 @@
 <script>
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQnWUx8MBE2H4wxNnExbn4C9tpuyPfvIzX6BKJ2INl1nkgB4ibEpQVuloNAghyHIuUt6nlR9F1kZPLY/pub?gid=1040068926&single=true&output=csv';
 
-const EVENT_DATE = new Date('2025-06-24T16:45:00-03:00');
+const EVENT_DATE = new Date('2026-06-24T16:45:00-03:00');
 
 function getDaysLeft() {
   const now = new Date();
@@ -321,25 +321,34 @@ async function loadData() {
     const raw = await res.text();
     const rows = parseCSV(raw);
 
-    // Filas con número en col 2 — dinámico, sin límite fijo
-    const allRows = rows.filter(r => r.length >= 3 && !isNaN(parseInt(r[2])));
+    // CSV de Hoja 1: col0 vacía, col1 vacía, col2 = número, col3 = label
+    // Filtramos filas que tengan número en col2 y texto en col3
+    const allRows = rows.filter(r => r.length >= 4 && !isNaN(parseInt(r[2])) && r[3] && r[3].trim() !== '');
 
-    // La última fila es el total si su col 0 o col 1 contiene "total" (case insensitive)
-    // Si no, calculamos el total sumando todo
+    // La última fila es el total (sin label en col3 o su número suma todo)
+    // La detectamos como la que no tiene label descriptivo o viene sola al final
+    // Estrategia: si hay una fila cuyo número coincide con la suma de las demás, es el total
     let dataRows = allRows;
     let finalTotal = 0;
+
+    // Intentamos detectar fila de total: última fila donde el número >= suma del resto
+    const sumAll = allRows.reduce((s, r) => s + (parseInt(r[2]) || 0), 0);
     const lastRow = allRows[allRows.length - 1];
-    const lastLabel = (lastRow[0] + ' ' + lastRow[1]).toLowerCase();
-    if (lastLabel.includes('total')) {
+    const lastVal = parseInt(lastRow[2]) || 0;
+    const sumWithoutLast = sumAll - lastVal;
+    if (lastVal === sumAll || lastVal === sumWithoutLast + lastVal && allRows.length > 1 && lastVal >= sumWithoutLast) {
       dataRows = allRows.slice(0, -1);
-      finalTotal = parseInt(lastRow[2]) || 0;
+      finalTotal = lastVal;
     }
     if (!finalTotal) {
       finalTotal = dataRows.reduce((s, r) => s + (parseInt(r[2]) || 0), 0);
     }
 
     const counts = dataRows.map(r => parseInt(r[2]) || 0);
-    const labels = dataRows.map(r => r[1] || r[0] || '—');
+    const labels = dataRows.map(r => {
+      const raw = r[3] || r[2] || '—';
+      return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+    });
     const maxCount = Math.max(...counts, 1);
 
     let html = '';
